@@ -78,45 +78,27 @@ def data_conversion(all_path_script):
                 b += 1
             name_object = re.search(r'\S+\.\S+[^;]', command)
             j = name_object.start()
-            one_command = {}
-            one_command['number_command'] = count_com
-            one_command['path_sql'] = path
-            one_command['name_object'] = name_object.group(0).strip().lower()
-            one_command['name_command'] = command[i:j].strip().lower()
+            one_command = {'number_command': count_com,
+                           'path_sql': path,
+                           'name_object': name_object.group(0).strip().lower(),
+                           'name_command': command[i:j].strip().lower()}
             count_com += 1
             all_commands.append(one_command)
     return all_commands
 
 
-def group_objects(commands):
-    result = {}
-    for command in commands:
-        if command['name_object'] in result:
-            result[command['name_object']].append(command)
-        else:
-            result[command['name_object']] = [command]
-    return result
-
-
-def validate_create_command(groups_objects):
-    result = {}
-    for obj in groups_objects:
-        create_number = 0
-        drop_number = 0
-        for i in groups_objects[obj]:
-            if 'create table' in i['name_command']:
-                create_number = i['number_command']
-            if 'drop table' in i['name_command']:
-                drop_number = i['number_command']
-        if drop_number == 0 and create_number != 0:
-            if i['path_sql'] not in result:
-                result[i['path_sql']] = [i]
-            else:
-                result[i['path_sql']].append(i)
-    return result
+def validate_create_command(all_commands):
+    create = list(filter(lambda x: 'create table' in x['name_command'], all_commands))
+    drop = list(filter(lambda x: 'drop table' in x['name_command'], all_commands))
+    for i in drop:
+        for j in create:
+            if i['name_object'] == j['name_object']:
+                create.remove(j)
+    return create
 
 
 def validate_commands(path):
+    result = {}
     all_path_script = {}
     for path_sql in find_sql_files(path):
         script_file = read_file(path_sql)
@@ -124,23 +106,25 @@ def validate_commands(path):
             clean_commands = delete_comment(script_file)
             all_path_script[path_sql] = split_sql(clean_commands)
     all_commands = data_conversion(all_path_script)
-    groups_objects = group_objects(all_commands)
-    create_commands = validate_create_command(groups_objects)
-    return create_commands
+    for i in validate_create_command(all_commands):
+        if i['path_sql'] not in result:
+            result[i['path_sql']] = [i]
+        else:
+            result[i['path_sql']].append(i)
+    return result
 
 
 def error_format(create_commands):
     result = []
     y = 1
-    while y == True:
-        for i in create_commands:
-            result.append(i + '\n')
-            for x in create_commands[i]:
-                result.append(str(y) + ')')
-                y += 1
-                result.append('Есть комманда: ' + x['name_command'].upper() + '.\n')
-                result.append('Необходимо добавить комманду:' + 'DROP TABLE ' + x['name_object'] + '.' + '\n'*2)
-            result.append('-'*50 + '\n')
+    for i in create_commands:
+        result.append(i + '\n')
+        for x in create_commands[i]:
+            result.append(str(y) + ')')
+            y += 1
+            result.append('Есть комманда: ' + x['name_command'].upper() + '.\n')
+            result.append('Необходимо добавить комманду: DROP TABLE ' + x['name_object'] + '.' + '\n'*2)
+        result.append('-'*50 + '\n')
     return result
 
 
